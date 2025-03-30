@@ -1,0 +1,84 @@
+name: Smart Indexing System
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Sundays midnight UTC
+  workflow_dispatch:
+  push:
+    paths:
+      - 'docs/news/**/*.html'
+      - '!docs/news/**/index.html'
+
+permissions:
+  contents: write
+
+jobs:
+  update_index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Archive old posts
+        run: |
+          mkdir -p docs/news/archived/$(date +%Y)/Q$(($(date +%m)/3+1))
+          find docs/news/current/ -name "*.html" ! -name "index.html" -mtime +180 -exec sh -c '
+            cp -p "$1" docs/news/archived/$(date +%Y)/Q$(($(date +%m)/3+1))/ &&
+            git rm "$1"
+          ' _ {} \;
+
+      - name: Generate JSON index
+        run: |
+          pip3 install beautifulsoup4
+          cat << 'EOF' > generate_index.py
+          import os
+          import json
+          from bs4 import BeautifulSoup
+          from datetime import datetime
+
+          def extract_metadata(filepath):
+              with open(filepath, 'r') as f:
+                  soup = BeautifulSoup(f.read(), 'html.parser')
+              
+              # Extract from template elements
+              header = soup.find('header', class_='post-header')
+              date_line = header.find('p', string=lambda x: x and 'Published:' in x) if header else None
+              date = date_line.text.split(':')[-1].strip() if date_line else None
+              
+              title = soup.title.text.replace('| Exynos-News', '').strip() if soup.title else os.path.basename(filepath).replace('.html', '')
+              
+              return {
+                  'title': title,
+                  'date': date or datetime.fromtimestamp(os.path.getmtime(filepath)).strftime('%Y-%m-%d'),
+                  'path': filepath.replace('docs/news/', ''),
+                  'device': soup.find('meta', {'name': 'device'}).get('content', '') if soup.find('meta', {'name': 'device'}) else '',
+                  'rom': soup.find('meta', {'name': 'rom'}).get('content', '') if soup.find('meta', {'name': 'rom'}) else '',
+                  'type': 'current' if '/current/' in filepath else 'archived'
+              }
+
+          posts = []
+          for root, _, files in os.walk('docs/news'):
+              for file in files:
+                  if file.endswith('.html') and file != 'index.html':
+                      full_path = os.path.join(root, file)
+                      posts.append(extract_metadata(full_path))
+
+          posts.sort(key=lambda x: x['date'], reverse=True)
+          
+          with open('docs/news/_index.json', 'w') as f:
+              json.dump({
+                  'generated_at': datetime.utcnow().isoformat(),
+                  'posts': posts
+              }, f, indent=2)
+          EOF
+          
+          python3 generate_index.py
+
+      - name: Commit changes
+        run: |
+          git config --global user.name "Index Bot"
+          git config --global user.email "index@exynos-news"
+          git add docs/news/_index.json
+          git commit -m "📡 Index update $(date +'%Y-%m-%d')"
+          git push

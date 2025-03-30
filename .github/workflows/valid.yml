@@ -1,0 +1,11 @@
+name: Link Validator
+on: [workflow_dispatch]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: peter-evans/link-checker@v1
+        with:
+          check-dead: true

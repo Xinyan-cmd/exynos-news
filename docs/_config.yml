@@ -1,0 +1,4 @@
+title: "Exynos News"
+theme: minima  # Default Jekyll theme (or use a custom one)
+plugins:
+  - jekyll-archives  # For archive pages
