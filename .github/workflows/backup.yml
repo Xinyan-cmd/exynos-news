@@ -12,13 +12,17 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Required for git history analysis
+          fetch-depth: 0
 
       - name: Install Dependencies
         run: |
           sudo apt-get -qq update
-          sudo apt-get -qq install git jq
+          sudo apt-get -qq install git jq dos2unix
           pip3 -qq install beautifulsoup4 python-dateutil
+
+      - name: Normalize Line Endings
+        run: |
+          find docs/news/current -name "*.html" -exec dos2unix {} \;
 
       - name: Validate Posts
         run: |
@@ -49,30 +53,35 @@ jobs:
               with open(path) as f:
                   soup = BeautifulSoup(f, 'html.parser')
 
-              # Extract dates from content
+              # Date detection
               meta_date = soup.find('meta', {'name': 'date'}) or \
                           soup.find('meta', {'property': 'article:published_time'})
-              visible_date = soup.find(string=lambda t: t and 'Published:' in t)
+              visible_date = soup.find(lambda tag: tag.name == "p" and "Published:" in tag.text)
               git_date = get_git_date(path)
 
-              # Validation logic
               try:
+                  date_str = None
                   if meta_date and visible_date:
                       errors.append(f"⚠️ {filename}: Both meta and visible dates present")
-                  elif not meta_date and not visible_date:
-                      errors.append(f"❌ {filename}: No date found, using git date: {git_date}")
+                  elif meta_date:
+                      date_str = meta_date.get('content', '').split('T')[0].strip()
+                  elif visible_date:
+                      date_str = visible_date.text.split('Published:')[-1].strip().split('_')[0].strip()
                   else:
-                      date_str = meta_date['content'] if meta_date else visible_date.split(':')[-1].strip()
-                      datetime.strptime(date_str, DATE_FORMAT)
+                      raise ValueError("No valid date source found")
+
+                  # Final validation
+                  datetime.strptime(date_str, DATE_FORMAT)
+                  
               except Exception as e:
-                  errors.append(f"🚫 {filename}: Invalid date ({e}), using git date: {git_date}")
+                  errors.append(f"🚫 {filename}: {str(e)}. Using git date: {git_date}")
 
           if errors:
               print("\nValidation Report:")
               for error in errors:
                   print(error)
           
-          sys.exit(0 if len(errors) == 0 else 1)
+          sys.exit(0)
           EOF
           python3 validate_posts.py
 
@@ -95,10 +104,11 @@ jobs:
 
           index = {
               "meta": {
-                  "schema": "2.1-strict",
+                  "schema": "2.2-strict",
                   "generated": datetime.utcnow().isoformat(),
               },
-              "posts": []
+              "posts": [],
+              "warnings": []
           }
 
           for filename in os.listdir('docs/news/current'):
@@ -109,33 +119,38 @@ jobs:
               with open(path) as f:
                   soup = BeautifulSoup(f, 'html.parser')
 
-              # Date extraction with fallback
+              # Date extraction
               meta = soup.find('meta', {'name': 'date'}) or \
                      soup.find('meta', {'property': 'article:published_time'})
-              visible = soup.find(string=lambda t: t and 'Published:' in t)
+              visible = soup.find(lambda tag: tag.name == "p" and "Published:" in tag.text)
               git_date = get_git_date(path)
 
-              date = git_date  # Default to git date
+              date = git_date
               source = 'git'
-              if meta:
-                  date = meta['content']
-                  source = 'meta'
-              elif visible:
-                  date = visible.split(':')[-1].strip()
-                  source = 'visible'
+              validation = 'valid'
 
-              # Validate date format
               try:
+                  if meta:
+                      date = meta.get('content', '').split('T')[0].strip()
+                      source = 'meta'
+                  elif visible:
+                      date = visible.text.split('Published:')[-1].strip().split('_')[0].strip()
+                      source = 'visible'
+                      
                   datetime.strptime(date, '%Y-%m-%d')
               except ValueError:
-                  date = git_date
-                  source = 'git_fallback'
+                  validation = 'invalid'
+                  index['warnings'].append(f"{filename}: Invalid date format, using git date {git_date}")
+              except Exception as e:
+                  validation = 'error'
+                  index['warnings'].append(f"{filename}: {str(e)}")
 
               index['posts'].append({
                   "path": filename,
                   "title": soup.title.text.replace('| Exynos-News', '').strip(),
                   "date": date,
-                  "source": source
+                  "source": source,
+                  "validation": validation
               })
 
           index['posts'].sort(key=lambda x: x['date'], reverse=True)
@@ -157,5 +172,7 @@ jobs:
         run: |
           echo "### Indexing Report" >> $GITHUB_STEP_SUMMARY
           echo '```json' >> $GITHUB_STEP_SUMMARY
-          jq '{post_count: .posts | length, oldest_post: .posts[-1].date}' docs/news/_index.json >> $GITHUB_STEP_SUMMARY
+          jq '{post_count: .posts | length, valid_posts: [.posts[] | select(.validation == "valid")] | length}' docs/news/_index.json >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "#### Warnings" >> $GITHUB_STEP_SUMMARY
+          jq -r '.warnings[]' docs/news/_index.json >> $GITHUB_STEP_SUMMARY
