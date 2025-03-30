@@ -1,172 +1,101 @@
-name: Content Lifecycle Manager
+name: Nuclear Indexing System
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 3 * * *'  # Daily at 3 AM UTC
 
 jobs:
-  content-manager:
+  nuclear:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install Dependencies
+      - name: Purge Previous Artifacts
         run: |
-          sudo apt-get -qq update
-          sudo apt-get -qq install git jq dos2unix
-          pip3 -qq install beautifulsoup4 python-dateutil
+          # Delete all Python scripts and old index
+          find . -name "*.py" -delete
+          rm -f docs/news/_index.json
+          git add -A
+          git commit -m "🧹 Nuclear cleanup" || echo "Nothing to clean"
 
-      - name: Normalize Files
+      - name: Generate Fresh Index
         run: |
-          find docs/news/current -name "*.html" -exec dos2unix {} \;
-
-      - name: Validate and Archive
-        run: |
-          # Configuration
-          IGNORE_FILES=("test-post.html" "template.html")
-          ARCHIVE_DAYS=180
-          CURRENT_DIR="docs/news/current"
-          ARCHIVE_DIR="docs/news/archived"
-
-          # Create archive directory structure
-          ARCHIVE_YEAR=$(date +%Y)
-          ARCHIVE_QUARTER="Q$(($(date +%m)/3+1))"
-          mkdir -p "$ARCHIVE_DIR/$ARCHIVE_YEAR/$ARCHIVE_QUARTER"
-
-          # Process files
-          find "$CURRENT_DIR" -name "*.html" | while read file; do
-            filename=$(basename "$file")
-            
-            # Skip ignored files
-            if [[ " ${IGNORE_FILES[@]} " =~ " ${filename} " ]]; then
-              echo "⏩ Ignoring file: $filename"
-              continue
-            fi
-
-            # Extract date from content
-            date_str=$(
-              grep -E 'Published: [0-9]{4}-[0-9]{2}-[0-9]{2}' "$file" | 
-              head -1 | 
-              cut -d' ' -f3 | 
-              grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || echo "invalid"
-            )
-
-            # Fallback to Git creation date
-            if [[ "$date_str" == "invalid" ]]; then
-              date_str=$(git log --diff-filter=A --format=%ad --date=short -- "$file" | tail -1)
-            fi
-
-            # Validate date format
-            if ! date -d "$date_str" &>/dev/null; then
-              echo "🚫 Invalid date format in $filename - using modification date"
-              date_str=$(date -r "$file" +%Y-%m-%d)
-            fi
-
-            # Calculate age in days
-            file_age=$(( ( $(date +%s) - $(date -d "$date_str" +%s) ) / 86400 ))
-
-            # Archive if older than threshold
-            if [ "$file_age" -gt "$ARCHIVE_DAYS" ]; then
-              echo "📦 Archiving $filename (age: ${file_age}d)"
-              mv "$file" "$ARCHIVE_DIR/$ARCHIVE_YEAR/$ARCHIVE_QUARTER/"
-            fi
-          done
-
-      - name: Generate Index
-        run: |
-          cat << 'EOF' > generate_index.py
+          cat << 'EOF' > nuclear_index.py
           import os
           import json
-          import subprocess
           from datetime import datetime, timezone
           from bs4 import BeautifulSoup
 
-          IGNORE_FILES = ["test-post.html", "template.html"]
-          POSTS_DIR = "docs/news/current"
-          ARCHIVE_DIR = "docs/news/archived"
+          INDEX_PATH = 'docs/news/_index.json'
+          POSTS_DIR = 'docs/news/current'
 
-          def get_creation_date(filepath):
+          def extract_content_date(soup):
               try:
-                  result = subprocess.run(
-                      ['git', 'log', '--diff-filter=A', '--format=%ad', '--date=short', '--', filepath],
-                      capture_output=True, text=True, check=True
-                  )
-                  return result.stdout.strip().split('\n')[-1]
+                  # First try meta tags
+                  meta_date = soup.find('meta', {'name': 'date'}) or \
+                             soup.find('meta', {'property': 'article:published_time'})
+                  if meta_date:
+                      return meta_date['content'].split('T')[0]
+                      
+                  # Then look for visible date
+                  header = soup.find('header', class_='post-header')
+                  if header:
+                      date_tag = header.find('p', string=lambda t: 'Published:' in t)
+                      if date_tag:
+                          return date_tag.get_text().split('Published:')[-1].strip(' >_')
               except:
-                  return datetime.fromtimestamp(os.path.getmtime(filepath)).strftime('%Y-%m-%d')
+                  pass
+              return None
 
           index = {
               "meta": {
-                  "schema": "3.0",
                   "generated": datetime.now(timezone.utc).isoformat(),
-                  "archive_threshold_days": 180
+                  "schema": "nuclear-5.0"
               },
-              "current": [],
-              "archived": []
+              "posts": []
           }
 
-          # Process current posts
           for filename in os.listdir(POSTS_DIR):
-              if filename in IGNORE_FILES or not filename.endswith('.html'):
+              if filename == 'index.html' or not filename.endswith('.html'):
                   continue
               
               path = os.path.join(POSTS_DIR, filename)
-              try:
-                  with open(path) as f:
-                      soup = BeautifulSoup(f, 'html.parser')
-                      
-                  title = soup.title.text.replace('| Exynos-News', '').strip() if soup.title else filename
-                  date_str = get_creation_date(path)
+              with open(path) as f:
+                  soup = BeautifulSoup(f, 'html.parser')
                   
-                  index['current'].append({
-                      "path": filename,
-                      "title": title,
-                      "date": date_str
-                  })
-              except Exception as e:
-                  print(f"⚠️ Error processing {filename}: {str(e)}")
+              content_date = extract_content_date(soup)
+              title = soup.title.text.replace('| Exynos-News', '').strip() if soup.title else filename
+              
+              index['posts'].append({
+                  "path": filename,
+                  "title": title,
+                  "date": content_date or "1970-01-01",
+                  "valid": bool(content_date)
+              })
 
-          # Process archived posts
-          for root, dirs, files in os.walk(ARCHIVE_DIR):
-              for filename in files:
-                  if not filename.endswith('.html'):
-                      continue
-                  
-                  path = os.path.join(root, filename)
-                  year = root.split('/')[-2]
-                  quarter = root.split('/')[-1]
-                  
-                  index['archived'].append({
-                      "path": os.path.relpath(path, ARCHIVE_DIR),
-                      "year": year,
-                      "quarter": quarter,
-                      "date": get_creation_date(path)
-                  })
-
-          # Sort posts
-          index['current'].sort(key=lambda x: x['date'], reverse=True)
-          index['archived'].sort(key=lambda x: x['date'], reverse=True)
+          index['posts'].sort(key=lambda x: x['date'], reverse=True)
           
-          with open('docs/news/_index.json', 'w') as f:
+          with open(INDEX_PATH, 'w') as f:
               json.dump(index, f, indent=2)
           EOF
-          python3 generate_index.py
 
-      - name: Commit Changes
+          python3 nuclear_index.py
+          rm nuclear_index.py  # Self-clean
+
+      - name: Commit New Reality
         run: |
-          git config --global user.name "Content Curator"
-          git config --global user.email "curator@exynos-news"
+          git config --global user.name "Nuclear Overseer"
+          git config --global user.email "nuke@exynos-news"
           git add .
-          git commit -m "🌐 Content update: $(date +'%Y-%m-%d')" || echo "No changes detected"
-          git push
+          git commit -m "💥 Nuclear index rebuild: $(date +'%Y-%m-%d %H:%M')"
+          git push --force
 
-      - name: System Report
+      - name: Post-Apocalyptic Report
         run: |
-          echo "### Content Report" >> $GITHUB_STEP_SUMMARY
-          echo '```json' >> $GITHUB_STEP_SUMMARY
-          jq '{current: .current | length, archived: .archived | length}' docs/news/_index.json >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "### Nuclear Report" >> $GITHUB_STEP_SUMMARY
+          echo "Index Version: $(jq -r '.meta.schema' docs/news/_index.json)" >> $GITHUB_STEP_SUMMARY
+          echo "Valid Posts: $(jq '[.posts[] | select(.valid)] | length' docs/news/_index.json)" >> $GITHUB_STEP_SUMMARY
