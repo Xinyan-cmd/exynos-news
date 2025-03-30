@@ -1,61 +1,42 @@
 {
-  "generated_at": "2025-03-30T16:38:42.828448",
-  "posts": [
-    {
-      "path": "current/Graphene-A21.html",
-      "title": "GrapheneOS Alpha Available for Samsung Galaxy A21",
-      "date": "2025-03-30T16:38:42.827193",
-      "device": "Unknown",
-      "rom": "Unknown"
-    },
-    {
-      "path": "current/Droidian-M21.html",
-      "title": "Your Post Title",
-      "date": "2025-03-30T16:38:42.826034",
-      "device": "Unknown",
-      "rom": "Unknown"
-    },
-    {
-      "path": "current/test-post.html",
-      "title": "Unknown",
-      "date": "2025-03-30T16:38:42.825922",
-      "device": "Unknown",
-      "rom": "Unknown"
-    },
-    {
-      "path": "current/Enda.html",
-      "title": "Your Post Title",
-      "date": "2025-03-30T16:38:42.824682",
-      "device": "Unknown",
-      "rom": "Unknown"
-    },
-    {
-      "path": "current/Upstream-V2.html",
-      "title": "Extreme Kernel upstream v2",
-      "date": "2025-03-30T16:38:42.823551",
-      "device": "Unknown",
-      "rom": "Unknown"
-    },
-    {
-      "path": "current/index.html",
-      "title": "Current Stuff",
-      "date": "2025-03-30T16:38:42.822803",
-      "device": "Unknown",
-      "rom": "Unknown"
-    },
-    {
-      "path": "archived/index.html",
-      "title": "Archived Stuff",
-      "date": "2025-03-30T16:38:42.822282",
-      "device": "Unknown",
-      "rom": "Unknown"
-    },
+  "meta": {
+    "schema": "3.0",
+    "generated": "2025-03-30T19:42:54.252169+00:00",
+    "archive_threshold_days": 180
+  },
+  "current": [
     {
       "path": "index.html",
-      "title": "News Hub",
-      "date": "2025-03-30T16:38:42.821238",
-      "device": "Unknown",
-      "rom": "Unknown"
+      "title": "Current Stuff",
+      "date": "2025-03-30"
+    },
+    {
+      "path": "Upstream-V2.html",
+      "title": "Extreme Kernel upstream v2",
+      "date": "2025-03-30"
+    },
+    {
+      "path": "Enda.html",
+      "title": "Your Post Title",
+      "date": "2025-03-30"
+    },
+    {
+      "path": "Droidian-M21.html",
+      "title": "Your Post Title",
+      "date": "2025-03-30"
+    },
+    {
+      "path": "Graphene-A21.html",
+      "title": "GrapheneOS Alpha Available for Samsung Galaxy A21",
+      "date": "2025-03-30"
+    }
+  ],
+  "archived": [
+    {
+      "path": "index.html",
+      "year": "news",
+      "quarter": "archived",
+      "date": "2025-03-30"
     }
   ]
 }
