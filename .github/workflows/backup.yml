@@ -1,84 +1,116 @@
-name: Smart Indexing System
+name: AutoFix Indexing System
 on:
   schedule:
-    - cron: '0 0 * * 0'  # Sundays midnight UTC
+    - cron: '0 0 * * *'  # Daily at midnight UTC
   workflow_dispatch:
-  push:
-    paths:
-      - 'docs/news/**/*.html'
-      - '!docs/news/**/index.html'
-
-permissions:
-  contents: write
 
 jobs:
-  update_index:
+  autofix:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
           fetch-depth: 0
 
-      - name: Archive old posts
+      - name: Setup environment
         run: |
-          mkdir -p docs/news/archived/$(date +%Y)/Q$(($(date +%m)/3+1))
-          find docs/news/current/ -name "*.html" ! -name "index.html" -mtime +180 -exec sh -c '
-            cp -p "$1" docs/news/archived/$(date +%Y)/Q$(($(date +%m)/3+1))/ &&
-            git rm "$1"
-          ' _ {} \;
+          sudo apt-get -qq update
+          sudo apt-get -qq install git-date-extractor jq
+          pip3 -q install beautifulsoup4 python-dateutil
 
-      - name: Generate JSON index
+      - name: Nuclear cleanup
         run: |
-          pip3 install beautifulsoup4
-          cat << 'EOF' > generate_index.py
+          rm -f docs/news/_index.json
+          git rm --cached docs/news/_index.json || true
+
+      - name: Generate indestructible index
+        run: |
+          cat << 'EOF' > robust_index.py
           import os
+          import re
           import json
+          import subprocess
           from bs4 import BeautifulSoup
-          from datetime import datetime
+          from dateutil.parser import parse
 
-          def extract_metadata(filepath):
-              with open(filepath, 'r') as f:
-                  soup = BeautifulSoup(f.read(), 'html.parser')
-              
-              # Extract from template elements
-              header = soup.find('header', class_='post-header')
-              date_line = header.find('p', string=lambda x: x and 'Published:' in x) if header else None
-              date = date_line.text.split(':')[-1].strip() if date_line else None
-              
-              title = soup.title.text.replace('| Exynos-News', '').strip() if soup.title else os.path.basename(filepath).replace('.html', '')
-              
-              return {
-                  'title': title,
-                  'date': date or datetime.fromtimestamp(os.path.getmtime(filepath)).strftime('%Y-%m-%d'),
-                  'path': filepath.replace('docs/news/', ''),
-                  'device': soup.find('meta', {'name': 'device'}).get('content', '') if soup.find('meta', {'name': 'device'}) else '',
-                  'rom': soup.find('meta', {'name': 'rom'}).get('content', '') if soup.find('meta', {'name': 'rom'}) else '',
-                  'type': 'current' if '/current/' in filepath else 'archived'
-              }
+          class AutoFix:
+              @staticmethod
+              def get_date(filepath):
+                  methods = [
+                      AutoFix._html_header_date,
+                      AutoFix._git_creation_date,
+                      AutoFix._filename_date,
+                      AutoFix._mtime_date
+                  ]
+                  for method in methods:
+                      date = method(filepath)
+                      if date: return date
+                  return "1970-01-01"
+
+              @staticmethod
+              def _html_header_date(filepath):
+                  try:
+                      with open(filepath) as f:
+                          soup = BeautifulSoup(f, 'html.parser')
+                          header = soup.find('header')
+                          if header:
+                              return re.search(r'\d{4}-\d{2}-\d{2}', header.text).group()
+                  except:
+                      return None
+
+              @staticmethod
+              def _git_creation_date(filepath):
+                  result = subprocess.run(['git', 'log', '--diff-filter=A', '--format=%aI', '--', filepath], 
+                                      capture_output=True, text=True)
+                  dates = result.stdout.strip().split('\n')
+                  return parse(dates[-1]).strftime('%Y-%m-%d') if dates else None
+
+              @staticmethod
+              def _filename_date(filepath):
+                  match = re.search(r'\d{4}-\d{2}-\d{2}', os.path.basename(filepath))
+                  return match.group() if match else None
+
+              @staticmethod
+              def _mtime_date(filepath):
+                  return parse(str(os.path.getmtime(filepath))).strftime('%Y-%m-%d')
 
           posts = []
           for root, _, files in os.walk('docs/news'):
               for file in files:
-                  if file.endswith('.html') and file != 'index.html':
-                      full_path = os.path.join(root, file)
-                      posts.append(extract_metadata(full_path))
+                  if file == 'index.html': continue
+                  if file.endswith('.html'):
+                      path = os.path.join(root, file)
+                      try:
+                          with open(path) as f:
+                              title = BeautifulSoup(f.read(), 'html.parser').title.text
+                              title = title.replace('| Exynos-News', '').strip()
+                      except:
+                          title = os.path.basename(file).replace('.html', '')
+                      
+                      posts.append({
+                          'path': path.replace('docs/news/', ''),
+                          'title': title,
+                          'date': AutoFix.get_date(path)
+                      })
 
-          posts.sort(key=lambda x: x['date'], reverse=True)
-          
+          # Ensure valid JSON even if empty
           with open('docs/news/_index.json', 'w') as f:
-              json.dump({
-                  'generated_at': datetime.utcnow().isoformat(),
-                  'posts': posts
-              }, f, indent=2)
+              json.dump({'posts': sorted(posts, key=lambda x: x['date'], reverse=True)}, f, indent=2)
           EOF
-          
-          python3 generate_index.py
 
-      - name: Commit changes
+          python3 robust_index.py
+
+      - name: Validate & force push
         run: |
-          git config --global user.name "Index Bot"
-          git config --global user.email "index@exynos-news"
+          # Ensure JSON validity at gunpoint
+          jq empty docs/news/_index.json || {
+            echo '{"posts": []}' > docs/news/_index.json
+          }
+
+          git config --global user.name "AutoFix Bot"
+          git config --global user.email "autofix@exynos-news"
           git add docs/news/_index.json
-          git commit -m "📡 Index update $(date +'%Y-%m-%d')"
-          git push
+          git commit -m "NUCLEAR INDEX FIX $(date +'%Y-%m-%d %H:%M')"
+          git push --force
