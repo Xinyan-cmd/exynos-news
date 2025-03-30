@@ -1,87 +1,88 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Exynos-News Terminal</title>
   <link rel="stylesheet" href="assets/crt.css">
   <link rel="stylesheet" href="assets/github.css">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap" rel="stylesheet">
-  <style>
-    .terminal-post {
-      background: rgba(0,30,0,0.2);
-      border-left: 3px solid #00ff00;
-      padding: 1rem;
-      margin: 1rem 0;
-      font-family: 'JetBrains Mono', monospace;
-    }
-    .post-meta {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 1rem;
-      margin: 0.5rem 0;
-      font-size: 0.9em;
-    }
-    .post-meta span {
-      color: #6a9955;
-    }
-    #live-feed {
-      border-top: 1px dashed #3a3a3a;
-      padding-top: 1rem;
-    }
-  </style>
 </head>
 <body>
   <div class="container">
-    <header>
-      <h1>> Welcome to Exynos-News_</h1>
-      <p>> Community-driven updates for Exynos devices</p>
+    <header role="banner">
+      <h1 aria-label="Welcome to Exynos News Terminal">> Welcome to Exynos-News_</h1>
+      <p>> Community-driven updates and news + drama for Exynos devices</p>
+      <p>> Amigos of project for now are (Mesazane)</p>
     </header>
 
-    <div id="live-feed">
-      <h2>> Live Feed <span id="update-status"></span></h2>
-      <div id="dynamic-content">
-        <p>> Connecting to update server... <span class="blink">_</span></p>
+    <main role="main">
+      <div class="repo-list" id="dynamic-content">
+        <div class="loading">
+          <p>> Initializing terminal connection... <span class="blink">_</span></p>
+        </div>
       </div>
-    </div>
+    </main>
 
-    <!-- Static navigation remains -->
+    <footer role="contentinfo">
+      <div id="backup-status">> Last backup: <span id="last-backup">Loading...</span>_</div>
+      <p>> Maintained by <a href="https://github.com/Sexynos990" target="_blank" rel="noopener noreferrer">Sexynos990</a>_</p>
+      <p>> <a href="https://github.com/Sexynos990/exynos-news/tree/site-backup/backups" target="_blank" rel="noopener noreferrer">Browse backups</a>_</p>
+      <p><span class="blink">_</span></p>
+    </footer>
   </div>
 
   <script>
-    const renderPost = (post) => `
-      <div class="terminal-post">
-        <h3><a href="news/${post.path}">${post.title}</a></h3>
-        <div class="post-meta">
-          <div><span>Device:</span> ${post.device || 'Generic'}</div>
-          <div><span>ROM:</span> ${post.rom || 'N/A'}</div>
-          <div><span>Published:</span> ${post.date}</div>
-        </div>
-      </div>
-    `;
-
-    const loadIndex = async () => {
-      try {
-        const res = await fetch(`news/_index.json?t=${Date.now()}`);
-        const data = await res.json();
-        
-        document.getElementById('dynamic-content').innerHTML = 
-          data.posts.slice(0, 5).map(renderPost).join('');
-          
-        document.getElementById('update-status').innerHTML = 
-          `[Last update: ${new Date(data.generated_at).toLocaleTimeString()}]`;
-          
-      } catch (error) {
-        document.getElementById('dynamic-content').innerHTML = `
-          <div class="warning">
-            <p>! Network error: ${error.message}</p>
-            <p>> <a href="news/current/">Browse manually</a>_</p>
+  document.addEventListener('DOMContentLoaded', () => {
+    // Dynamic content loader
+    fetch('news/_index.json')
+      .then(r => r.json())
+      .then(data => {
+        const container = document.getElementById('dynamic-content');
+        container.innerHTML = `
+          <div class="repo">
+            <h3><a href="news/current/">/news/</a></h3>
+            <p>> Latest ${data.posts.filter(p => p.type === 'current').length} updates</p>
+          </div>
+          <div class="repo">
+            <h3><a href="news/archived/">/archives/</a></h3>
+            <p>> Historical repository (${data.posts.filter(p => p.type === 'archived').length} entries)</p>
+          </div>
+          <div class="repo">
+            <h3><a href="videos/index.html">/Videos/</a></h3>
+            <p>> Community media archive</p>
           </div>
         `;
-      }
-    };
+      })
+      .catch(() => {
+        document.getElementById('dynamic-content').innerHTML = `
+          <div class="repo">
+            <h3><a href="news/current/">/news/</a></h3>
+            <p>> Manual access required</p>
+          </div>
+          <div class="repo">
+            <h3><a href="news/archived/">/archives/</a></h3>
+            <p>> Historical repository</p>
+          </div>
+          <div class="repo">
+            <h3><a href="videos/index.html">/Videos/</a></h3>
+            <p>> Community media archive</p>
+          </div>
+        `;
+      });
 
-    // Initialize with auto-refresh
-    loadIndex();
-    setInterval(loadIndex, 300000);  // 5 minutes
+    // Backup status
+    const updateBackupTime = () => {
+      fetch('news/_index.json')
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById('last-backup').textContent = 
+            new Date(data.generated_at).toLocaleString();
+        });
+    };
+    updateBackupTime();
+    setInterval(updateBackupTime, 300000);
+  });
   </script>
 </body>
 </html>
