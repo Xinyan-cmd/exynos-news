@@ -1,0 +1,45 @@
+{
+  "generated_at": "2025-03-30T13:37:57.985824",
+  "posts": [
+    {
+      "title": "Your Post Title",
+      "date": "YYYY-MM-DD",
+      "path": "current/Droidian-M21.html",
+      "device": "",
+      "rom": "",
+      "type": "current"
+    },
+    {
+      "title": "test-post",
+      "date": "2025-03-30",
+      "path": "current/test-post.html",
+      "device": "",
+      "rom": "",
+      "type": "current"
+    },
+    {
+      "title": "GrapheneOS Alpha Available for Samsung Galaxy A21",
+      "date": "2025-03-29",
+      "path": "current/Graphene-A21.html",
+      "device": "[A21] (SM-A217F)",
+      "rom": "[Nullvalue's Try of GrapheneOS Alpha on A21]",
+      "type": "current"
+    },
+    {
+      "title": "Extreme Kernel upstream v2",
+      "date": "2025-03-27",
+      "path": "current/Upstream-V2.html",
+      "device": "Exynos990",
+      "rom": "Upstream V2",
+      "type": "current"
+    },
+    {
+      "title": "Your Post Title",
+      "date": "2025-03-27",
+      "path": "current/Enda.html",
+      "device": "overall exynos 9830-2200",
+      "rom": "One UI7 beta 6",
+      "type": "current"
+    }
+  ]
+}
