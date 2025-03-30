@@ -1,116 +1,152 @@
-name: AutoFix Indexing System
+name: 🛡️ Exynos AutoHeal System
 on:
   schedule:
-    - cron: '0 0 * * *'  # Daily at midnight UTC
+    - cron: '*/30 * * * *'  # Every 30 minutes
   workflow_dispatch:
+  push:
+    paths-ignore:
+      - 'docs/news/_index.*'
 
 jobs:
   autofix:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - name: 🌐 Checkout Reality
+        uses: actions/checkout@v4
         with:
           persist-credentials: true
           fetch-depth: 0
+          sparse-checkout: |
+            docs/
+            .github/workflows/
 
-      - name: Setup environment
+      - name: 🛠️ Install Core Packages
         run: |
-          sudo apt-get -qq update
-          sudo apt-get -qq install git-date-extractor jq
-          pip3 -q install beautifulsoup4 python-dateutil
+          sudo apt-get -qq install pandoc ripgrep
+          pip3 -qq install bs4 markdown python-frontmatter
 
-      - name: Nuclear cleanup
+      - name: 🧼 Cleanse Corruptions
         run: |
+          find docs/news -name "*.tmp" -delete
           rm -f docs/news/_index.json
-          git rm --cached docs/news/_index.json || true
 
-      - name: Generate indestructible index
+      - name: 🔄 Universal Format Normalizer
         run: |
-          cat << 'EOF' > robust_index.py
+          # Convert all to HTML
+          find docs/news -name "*.md" -exec pandoc {} -o {.}.html \;
+          find docs/news -name "*.txt" -exec pandoc {} -o {.}.html \;
+
+      - name: 🧠 Cognitive Index Engine
+        run: |
+          cat << 'EOF' > neural_core.py
           import os
-          import re
           import json
-          import subprocess
+          import frontmatter
           from bs4 import BeautifulSoup
-          from dateutil.parser import parse
+          from datetime import datetime
 
-          class AutoFix:
-              @staticmethod
-              def get_date(filepath):
-                  methods = [
-                      AutoFix._html_header_date,
-                      AutoFix._git_creation_date,
-                      AutoFix._filename_date,
-                      AutoFix._mtime_date
-                  ]
-                  for method in methods:
-                      date = method(filepath)
-                      if date: return date
-                  return "1970-01-01"
+          class RealityForge:
+              def __init__(self):
+                  self.posts = []
+                  self.link_graph = {}
 
-              @staticmethod
-              def _html_header_date(filepath):
+              def process_artifact(self, path):
                   try:
-                      with open(filepath) as f:
-                          soup = BeautifulSoup(f, 'html.parser')
-                          header = soup.find('header')
-                          if header:
-                              return re.search(r'\d{4}-\d{2}-\d{2}', header.text).group()
+                      with open(path) as f:
+                          content = f.read()
+                      
+                      # Extract essence
+                      meta = self.extract_essence(path, content)
+                      self.posts.append(meta)
+                      
+                      # Repair reality
+                      self.fix_temporal_links(path, content)
+
+                  except Exception as e:
+                      print(f"Reality anomaly in {path}: {str(e)}")
+
+              def extract_essence(self, path, content):
+                  meta = {
+                      'path': os.path.relpath(path, 'docs/news'),
+                      'title': 'Unknown',
+                      'date': datetime.now().isoformat(),
+                      'device': 'Unknown',
+                      'rom': 'Unknown'
+                  }
+
+                  # Parse frontmatter
+                  try:
+                      post = frontmatter.loads(content)
+                      meta.update(post.metadata)
                   except:
-                      return None
+                      pass
 
-              @staticmethod
-              def _git_creation_date(filepath):
-                  result = subprocess.run(['git', 'log', '--diff-filter=A', '--format=%aI', '--', filepath], 
-                                      capture_output=True, text=True)
-                  dates = result.stdout.strip().split('\n')
-                  return parse(dates[-1]).strftime('%Y-%m-%d') if dates else None
+                  # HTML extraction
+                  soup = BeautifulSoup(content, 'html.parser')
+                  if soup.title:
+                      meta['title'] = soup.title.text.split('|')[0].strip()
 
-              @staticmethod
-              def _filename_date(filepath):
-                  match = re.search(r'\d{4}-\d{2}-\d{2}', os.path.basename(filepath))
-                  return match.group() if match else None
+                  # Date extraction hierarchy
+                  date_sources = [
+                      lambda: meta.get('date'),
+                      lambda: soup.find('time').get('datetime'),
+                      lambda: datetime.fromtimestamp(os.path.getmtime(path)).isoformat()
+                  ]
+                  for source in date_sources:
+                      try: meta['date'] = source(); break
+                      except: continue
 
-              @staticmethod
-              def _mtime_date(filepath):
-                  return parse(str(os.path.getmtime(filepath))).strftime('%Y-%m-%d')
+                  return meta
 
-          posts = []
+              def fix_temporal_links(self, path, content):
+                  # Fix relative paths
+                  dir_depth = path.count('/') - 2
+                  prefix = '../' * dir_depth if dir_depth > 0 else './'
+                  
+                  # Rewrite links
+                  fixed = re.sub(
+                      r'(href|src)="(?!https?://)([^"]+)"',
+                      lambda m: f'{m.group(1)}="{prefix}{m.group(2)}"',
+                      content
+                  )
+                  
+                  with open(path, 'w') as f:
+                      f.write(fixed)
+
+              def save_fabric(self):
+                  self.posts.sort(key=lambda x: x['date'], reverse=True)
+                  with open('docs/news/_index.json', 'w') as f:
+                      json.dump({
+                          'generated_at': datetime.now().isoformat(),
+                          'posts': self.posts
+                      }, f, indent=2)
+
+          # Initiate forge
+          fabric = RealityForge()
           for root, _, files in os.walk('docs/news'):
               for file in files:
-                  if file == 'index.html': continue
                   if file.endswith('.html'):
-                      path = os.path.join(root, file)
-                      try:
-                          with open(path) as f:
-                              title = BeautifulSoup(f.read(), 'html.parser').title.text
-                              title = title.replace('| Exynos-News', '').strip()
-                      except:
-                          title = os.path.basename(file).replace('.html', '')
-                      
-                      posts.append({
-                          'path': path.replace('docs/news/', ''),
-                          'title': title,
-                          'date': AutoFix.get_date(path)
-                      })
-
-          # Ensure valid JSON even if empty
-          with open('docs/news/_index.json', 'w') as f:
-              json.dump({'posts': sorted(posts, key=lambda x: x['date'], reverse=True)}, f, indent=2)
+                      fabric.process_artifact(os.path.join(root, file))
+          fabric.save_fabric()
           EOF
+          python3 neural_core.py
 
-          python3 robust_index.py
-
-      - name: Validate & force push
+      - name: 🔒 Validate Reality
         run: |
-          # Ensure JSON validity at gunpoint
-          jq empty docs/news/_index.json || {
-            echo '{"posts": []}' > docs/news/_index.json
-          }
+          jq -e '.posts' docs/news/_index.json || \
+          echo '{"posts":[]}' > docs/news/_index.json
 
-          git config --global user.name "AutoFix Bot"
-          git config --global user.email "autofix@exynos-news"
-          git add docs/news/_index.json
-          git commit -m "NUCLEAR INDEX FIX $(date +'%Y-%m-%d %H:%M')"
+      - name: 🌌 Commit Continuum
+        run: |
+          git config --global user.name "Reality Forge"
+          git config --global user.email "forge@exynos-news"
+          git add .
+          git commit -m "🔄 Reality Sync $(date +'%Y-%m-%d %H:%M:%S')" || true
           git push --force
+
+      - name: 📜 System Manifest
+        run: |
+          echo "### Reality Status" >> $GITHUB_STEP_SUMMARY
+          echo "Total Posts: $(jq '.posts | length' docs/news/_index.json)" >> $GITHUB_STEP_SUMMARY
+          echo "Last Generated: $(jq -r '.generated_at' docs/news/_index.json)" >> $GITHUB_STEP_SUMMARY
