@@ -1,101 +1,225 @@
-name: Nuclear Indexing System
+name: Quantum Indexing System
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 3 * * *'  # Daily at 3 AM UTC
 
 jobs:
-  nuclear:
+  quantum-indexer:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - name: Checkout Code
+      - name: Checkout Singularity
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Purge Previous Artifacts
+      - name: Install Quantum Dependencies
         run: |
-          # Delete all Python scripts and old index
+          sudo apt-get -qq update
+          sudo apt-get -qq install git jq dos2unix
+          sudo python3 -m pip install -q --upgrade pip
+          sudo python3 -m pip install -q beautifulsoup4 python-dateutil tqdm
+
+      - name: Purge Legacy Systems
+        run: |
           find . -name "*.py" -delete
-          rm -f docs/news/_index.json
+          rm -rf docs/news/_index.json docs/news/archived/*
           git add -A
-          git commit -m "🧹 Nuclear cleanup" || echo "Nothing to clean"
+          git commit -m "♻️ Quantum preparation" || true
 
-      - name: Generate Fresh Index
+      - name: Generate Quantum Index
         run: |
-          cat << 'EOF' > nuclear_index.py
+          cat << 'EOF' > quantum_processor.py
           import os
           import json
-          from datetime import datetime, timezone
+          import subprocess
+          from datetime import datetime, timedelta, timezone
           from bs4 import BeautifulSoup
+          from tqdm import tqdm
+          from dateutil.parser import parse
 
-          INDEX_PATH = 'docs/news/_index.json'
-          POSTS_DIR = 'docs/news/current'
-
-          def extract_content_date(soup):
-              try:
-                  # First try meta tags
-                  meta_date = soup.find('meta', {'name': 'date'}) or \
-                             soup.find('meta', {'property': 'article:published_time'})
-                  if meta_date:
-                      return meta_date['content'].split('T')[0]
-                      
-                  # Then look for visible date
-                  header = soup.find('header', class_='post-header')
-                  if header:
-                      date_tag = header.find('p', string=lambda t: 'Published:' in t)
-                      if date_tag:
-                          return date_tag.get_text().split('Published:')[-1].strip(' >_')
-              except:
-                  pass
-              return None
-
-          index = {
-              "meta": {
-                  "generated": datetime.now(timezone.utc).isoformat(),
-                  "schema": "nuclear-5.0"
-              },
-              "posts": []
+          CONFIG = {
+              "posts_dir": "docs/news/current",
+              "archive_dir": "docs/news/archived",
+              "index_path": "docs/news/_index.json",
+              "archive_threshold": 180,  # Days
+              "allowed_future_days": 3,
+              "ignore_files": ["test-post.html", "template.html"]
           }
 
-          for filename in os.listdir(POSTS_DIR):
-              if filename == 'index.html' or not filename.endswith('.html'):
-                  continue
-              
-              path = os.path.join(POSTS_DIR, filename)
-              with open(path) as f:
-                  soup = BeautifulSoup(f, 'html.parser')
-                  
-              content_date = extract_content_date(soup)
-              title = soup.title.text.replace('| Exynos-News', '').strip() if soup.title else filename
-              
-              index['posts'].append({
-                  "path": filename,
-                  "title": title,
-                  "date": content_date or "1970-01-01",
-                  "valid": bool(content_date)
-              })
+          class QuantumDateHandler:
+              @staticmethod
+              def parse_date(source, filepath):
+                  try:
+                      if source == "meta":
+                          return parse(source["content"]).date().isoformat()
+                      if source == "visible":
+                          return parse(source["text"].split("Published:")[-1].strip(">_ ")).date().isoformat()
+                      if source == "git":
+                          result = subprocess.run(
+                              ['git', 'log', '--diff-filter=A', '--format=%ad', '--date=short', '--', filepath],
+                              capture_output=True, text=True
+                          )
+                          return result.stdout.strip().split('\n')[-1]
+                      return datetime.now().date().isoformat()
+                  except:
+                      return QuantumDateHandler.fallback_date(filepath)
 
-          index['posts'].sort(key=lambda x: x['date'], reverse=True)
-          
-          with open(INDEX_PATH, 'w') as f:
-              json.dump(index, f, indent=2)
+              @staticmethod
+              def fallback_date(filepath):
+                  try:
+                      return datetime.fromtimestamp(os.path.getmtime(filepath)).date().isoformat()
+                  except:
+                      return "1970-01-01"
+
+          class QuantumIndexer:
+              def __init__(self):
+                  self.index = {
+                      "meta": {
+                          "schema": "quantum-v6",
+                          "generated": datetime.now(timezone.utc).isoformat(),
+                          "statistics": {
+                              "total": 0,
+                              "valid": 0,
+                              "archived": 0,
+                              "future_corrected": 0
+                          }
+                      },
+                      "posts": []
+                  }
+
+              def process_universe(self):
+                  self.process_directory(CONFIG["posts_dir"], False)
+                  self.process_directory(CONFIG["archive_dir"], True)
+                  self.index["posts"].sort(key=lambda x: x["quantum_date"], reverse=True)
+                  self.save_index()
+
+              def process_directory(self, path, is_archived):
+                  for root, _, files in os.walk(path):
+                      for filename in tqdm(files, desc=f"Processing {os.path.basename(root)}"):
+                          if filename in CONFIG["ignore_files"] or not filename.endswith('.html'):
+                              continue
+                          
+                          filepath = os.path.join(root, filename)
+                          self.process_file(filepath, is_archived)
+
+              def process_file(self, filepath, is_archived):
+                  try:
+                      with open(filepath, 'r') as f:
+                          soup = BeautifulSoup(f.read(), 'lxml')
+
+                      metadata = self.extract_metadata(soup, filepath)
+                      if not is_archived and self.needs_archiving(metadata["dates"]["content"]):
+                          self.archive_file(filepath)
+                          return
+
+                      self.index["posts"].append({
+                          "path": os.path.relpath(filepath, "docs/news"),
+                          "title": self.get_title(soup, filepath),
+                          "dates": metadata["dates"],
+                          "source": metadata["source"],
+                          "valid": metadata["valid"],
+                          "archived": is_archived
+                      })
+                      self.index["meta"]["statistics"]["total"] += 1
+                      if metadata["valid"]: self.index["meta"]["statistics"]["valid"] += 1
+
+                  except Exception as e:
+                      print(f"🛑 Quantum fluctuation in {os.path.basename(filepath)}: {str(e)}")
+
+              def extract_metadata(self, soup, filepath):
+                  dates = {
+                      "content": None,
+                      "git": None,
+                      "final": None
+                  }
+                  source = "unknown"
+                  valid = False
+
+                  # Date extraction sequence
+                  date_sources = [
+                      {"type": "meta", "obj": soup.find('meta', {'name': 'date'})},
+                      {"type": "meta", "obj": soup.find('meta', {'property': 'article:published_time'})},
+                      {"type": "visible", "obj": soup.find('p', string=lambda t: t and 'Published:' in t)},
+                      {"type": "git", "obj": "fallback"}
+                  ]
+
+                  for src in date_sources:
+                      if src["obj"]:
+                          dates["content"] = QuantumDateHandler.parse_date(src["type"], src["obj"])
+                          source = src["type"]
+                          if dates["content"] != "1970-01-01":
+                              valid = True
+                              break
+
+                  dates["git"] = QuantumDateHandler.parse_date("git", filepath)
+                  dates["final"] = self.validate_date(dates["content"] or dates["git"], filepath)
+                  
+                  return {
+                      "dates": dates,
+                      "source": source,
+                      "valid": valid
+                  }
+
+              def validate_date(self, date_str, filepath):
+                  try:
+                      post_date = parse(date_str).date()
+                      current_date = datetime.now().date()
+                      
+                      if post_date > current_date + timedelta(days=CONFIG["allowed_future_days"]):
+                          self.index["meta"]["statistics"]["future_corrected"] += 1
+                          return QuantumDateHandler.fallback_date(filepath)
+                      return date_str
+                  except:
+                      return QuantumDateHandler.fallback_date(filepath)
+
+              def needs_archiving(self, date_str):
+                  try:
+                      post_date = parse(date_str).date()
+                      return (datetime.now().date() - post_date).days > CONFIG["archive_threshold"]
+                  except:
+                      return False
+
+              def archive_file(self, filepath):
+                  archive_date = datetime.now().date()
+                  archive_path = os.path.join(
+                      CONFIG["archive_dir"],
+                      f"{archive_date.year}/Q{(archive_date.month-1)//3 + 1}"
+                  )
+                  os.makedirs(archive_path, exist_ok=True)
+                  os.rename(filepath, os.path.join(archive_path, os.path.basename(filepath)))
+                  self.index["meta"]["statistics"]["archived"] += 1
+
+              def get_title(self, soup, filepath):
+                  return soup.title.text.replace('| Exynos-News', '').strip() if soup.title else \
+                      os.path.basename(filepath).replace('-', ' ').title()
+
+              def save_index(self):
+                  with open(CONFIG["index_path"], 'w') as f:
+                      json.dump(self.index, f, indent=2, ensure_ascii=False)
+
+          if __name__ == "__main__":
+              QuantumIndexer().process_universe()
           EOF
 
-          python3 nuclear_index.py
-          rm nuclear_index.py  # Self-clean
+          python3 quantum_processor.py
+          rm quantum_processor.py
 
-      - name: Commit New Reality
+      - name: Commit Quantum State
         run: |
-          git config --global user.name "Nuclear Overseer"
-          git config --global user.email "nuke@exynos-news"
+          git config --global user.name "Quantum Curator"
+          git config --global user.email "quantum@exynos-news"
           git add .
-          git commit -m "💥 Nuclear index rebuild: $(date +'%Y-%m-%d %H:%M')"
+          git commit -m "🌌 Quantum Index: $(date +'%Y-%m-%dT%H:%M:%S%z')"
           git push --force
 
-      - name: Post-Apocalyptic Report
+      - name: Quantum Report
         run: |
-          echo "### Nuclear Report" >> $GITHUB_STEP_SUMMARY
-          echo "Index Version: $(jq -r '.meta.schema' docs/news/_index.json)" >> $GITHUB_STEP_SUMMARY
-          echo "Valid Posts: $(jq '[.posts[] | select(.valid)] | length' docs/news/_index.json)" >> $GITHUB_STEP_SUMMARY
+          echo "### Quantum Indexing Report" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          jq '.meta.statistics' docs/news/_index.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "#### Recent Changes" >> $GITHUB_STEP_SUMMARY
+          git log -n 3 --pretty=format:"%h %s" >> $GITHUB_STEP_SUMMARY
