@@ -1,152 +1,142 @@
-name: 🛡️ Exynos AutoHeal System
+name: Strict Content Indexing
 on:
-  schedule:
-    - cron: '*/30 * * * *'  # Every 30 minutes
   workflow_dispatch:
-  push:
-    paths-ignore:
-      - 'docs/news/_index.*'
+  schedule:
+    - cron: '0 3 * * *'  # Daily at 3 AM UTC
 
 jobs:
-  autofix:
+  strict-indexer:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
-      - name: 🌐 Checkout Reality
+      - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
-          fetch-depth: 0
-          sparse-checkout: |
-            docs/
-            .github/workflows/
 
-      - name: 🛠️ Install Core Packages
+      - name: Validate Posts
         run: |
-          sudo apt-get -qq install pandoc ripgrep
-          pip3 -qq install bs4 markdown python-frontmatter
-
-      - name: 🧼 Cleanse Corruptions
-        run: |
-          find docs/news -name "*.tmp" -delete
-          rm -f docs/news/_index.json
-
-      - name: 🔄 Universal Format Normalizer
-        run: |
-          # Convert all to HTML
-          find docs/news -name "*.md" -exec pandoc {} -o {.}.html \;
-          find docs/news -name "*.txt" -exec pandoc {} -o {.}.html \;
-
-      - name: 🧠 Cognitive Index Engine
-        run: |
-          cat << 'EOF' > neural_core.py
+          cat << 'EOF' > validate_posts.py
+          import sys
           import os
-          import json
-          import frontmatter
           from bs4 import BeautifulSoup
           from datetime import datetime
 
-          class RealityForge:
-              def __init__(self):
-                  self.posts = []
-                  self.link_graph = {}
+          POSTS_DIR = 'docs/news/current'
+          DATE_FORMAT = '%Y-%m-%d'
+          valid_count = 0
+          errors = []
 
-              def process_artifact(self, path):
-                  try:
-                      with open(path) as f:
-                          content = f.read()
-                      
-                      # Extract essence
-                      meta = self.extract_essence(path, content)
-                      self.posts.append(meta)
-                      
-                      # Repair reality
-                      self.fix_temporal_links(path, content)
+          for filename in os.listdir(POSTS_DIR):
+              if filename == 'index.html' or not filename.endswith('.html'):
+                  continue
 
-                  except Exception as e:
-                      print(f"Reality anomaly in {path}: {str(e)}")
+              path = os.path.join(POSTS_DIR, filename)
+              with open(path) as f:
+                  soup = BeautifulSoup(f, 'html.parser')
 
-              def extract_essence(self, path, content):
-                  meta = {
-                      'path': os.path.relpath(path, 'docs/news'),
-                      'title': 'Unknown',
-                      'date': datetime.now().isoformat(),
-                      'device': 'Unknown',
-                      'rom': 'Unknown'
-                  }
-
-                  # Parse frontmatter
-                  try:
-                      post = frontmatter.loads(content)
-                      meta.update(post.metadata)
-                  except:
-                      pass
-
-                  # HTML extraction
-                  soup = BeautifulSoup(content, 'html.parser')
-                  if soup.title:
-                      meta['title'] = soup.title.text.split('|')[0].strip()
-
-                  # Date extraction hierarchy
-                  date_sources = [
-                      lambda: meta.get('date'),
-                      lambda: soup.find('time').get('datetime'),
-                      lambda: datetime.fromtimestamp(os.path.getmtime(path)).isoformat()
-                  ]
-                  for source in date_sources:
-                      try: meta['date'] = source(); break
-                      except: continue
-
-                  return meta
-
-              def fix_temporal_links(self, path, content):
-                  # Fix relative paths
-                  dir_depth = path.count('/') - 2
-                  prefix = '../' * dir_depth if dir_depth > 0 else './'
+              # Strict validation
+              meta_date = soup.find('meta', {'name': 'date'}) or \
+                          soup.find('meta', {'property': 'article:published_time'})
+              visible_date = soup.find(string=lambda t: 'Published:' in t)
+              
+              if not meta_date and not visible_date:
+                  errors.append(f"❌ {filename}: No valid date found")
+                  continue
                   
-                  # Rewrite links
-                  fixed = re.sub(
-                      r'(href|src)="(?!https?://)([^"]+)"',
-                      lambda m: f'{m.group(1)}="{prefix}{m.group(2)}"',
-                      content
-                  )
-                  
-                  with open(path, 'w') as f:
-                      f.write(fixed)
+              if meta_date and visible_date:
+                  errors.append(f"⚠️ {filename}: Both meta and visible dates present")
+                  continue
 
-              def save_fabric(self):
-                  self.posts.sort(key=lambda x: x['date'], reverse=True)
-                  with open('docs/news/_index.json', 'w') as f:
-                      json.dump({
-                          'generated_at': datetime.now().isoformat(),
-                          'posts': self.posts
-                      }, f, indent=2)
+              try:
+                  date_str = meta_date['content'] if meta_date else visible_date.split(':')[-1].strip()
+                  datetime.strptime(date_str, DATE_FORMAT)
+                  valid_count += 1
+              except (ValueError, KeyError, AttributeError) as e:
+                  errors.append(f"🚫 {filename}: Invalid date format - {str(e)}")
 
-          # Initiate forge
-          fabric = RealityForge()
-          for root, _, files in os.walk('docs/news'):
-              for file in files:
-                  if file.endswith('.html'):
-                      fabric.process_artifact(os.path.join(root, file))
-          fabric.save_fabric()
+          # Report and exit
+          if errors:
+              print("\nValidation Errors:")
+              for error in errors:
+                  print(error)
+              sys.exit(1)
+          
+          print(f"✅ All {valid_count} posts validated successfully")
           EOF
-          python3 neural_core.py
+          
+          python3 validate_posts.py
 
-      - name: 🔒 Validate Reality
+      - name: Generate Index
         run: |
-          jq -e '.posts' docs/news/_index.json || \
-          echo '{"posts":[]}' > docs/news/_index.json
+          cat << 'EOF' > generate_index.py
+          import os
+          import json
+          from bs4 import BeautifulSoup
+          from datetime import datetime
 
-      - name: 🌌 Commit Continuum
-        run: |
-          git config --global user.name "Reality Forge"
-          git config --global user.email "forge@exynos-news"
-          git add .
-          git commit -m "🔄 Reality Sync $(date +'%Y-%m-%d %H:%M:%S')" || true
-          git push --force
+          INDEX_PATH = 'docs/news/_index.json'
+          POSTS_DIR = 'docs/news/current'
+          DATE_FORMAT = '%Y-%m-%d'
 
-      - name: 📜 System Manifest
+          index = {
+              "meta": {
+                  "schema": "2.0-strict",
+                  "generated": datetime.utcnow().isoformat(),
+                  "date_source": "meta-or-visible"
+              },
+              "posts": []
+          }
+
+          for filename in os.listdir(POSTS_DIR):
+              if filename == 'index.html' or not filename.endswith('.html'):
+                  continue
+
+              path = os.path.join(POSTS_DIR, filename)
+              with open(path) as f:
+                  soup = BeautifulSoup(f, 'html.parser')
+
+              # Extract validated date
+              date_source = soup.find('meta', {'name': 'date'}) or \
+                           soup.find('meta', {'property': 'article:published_time'})
+              if date_source:
+                  date_str = date_source['content']
+                  source_type = 'meta'
+              else:
+                  date_str = soup.find(string=lambda t: 'Published:' in t).split(':')[-1].strip()
+                  source_type = 'visible'
+
+              post = {
+                  "path": filename,
+                  "title": soup.title.text.replace('| Exynos-News', '').strip(),
+                  "date": date_str,
+                  "source": source_type,
+                  "valid": True
+              }
+
+              index['posts'].append(post)
+
+          # Sort by parsed date
+          index['posts'].sort(
+              key=lambda x: datetime.strptime(x['date'], DATE_FORMAT),
+              reverse=True
+          )
+
+          with open(INDEX_PATH, 'w') as f:
+              json.dump(index, f, indent=2, ensure_ascii=False)
+          EOF
+          
+          python3 generate_index.py
+
+      - name: Commit Index
         run: |
-          echo "### Reality Status" >> $GITHUB_STEP_SUMMARY
-          echo "Total Posts: $(jq '.posts | length' docs/news/_index.json)" >> $GITHUB_STEP_SUMMARY
-          echo "Last Generated: $(jq -r '.generated_at' docs/news/_index.json)" >> $GITHUB_STEP_SUMMARY
+          git config --global user.name "Index Enforcer"
+          git config --global user.email "index@exynos-news"
+          git add docs/news/_index.json
+          git commit -m "🔒 Strict index: $(date +'%Y-%m-%d')"
+          git push
+
+      - name: System Report
+        run: |
+          echo "### Indexing Report" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          jq '{posts: .posts | length, schema: .meta.schema}' docs/news/_index.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
