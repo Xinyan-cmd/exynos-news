@@ -1,45 +1,61 @@
 {
-  "generated_at": "2025-03-30T13:37:57.985824",
+  "generated_at": "2025-03-30T16:30:04.320060",
   "posts": [
     {
-      "title": "Your Post Title",
-      "date": "YYYY-MM-DD",
-      "path": "current/Droidian-M21.html",
-      "device": "",
-      "rom": "",
-      "type": "current"
-    },
-    {
-      "title": "test-post",
-      "date": "2025-03-30",
-      "path": "current/test-post.html",
-      "device": "",
-      "rom": "",
-      "type": "current"
-    },
-    {
-      "title": "GrapheneOS Alpha Available for Samsung Galaxy A21",
-      "date": "2025-03-29",
       "path": "current/Graphene-A21.html",
-      "device": "[A21] (SM-A217F)",
-      "rom": "[Nullvalue's Try of GrapheneOS Alpha on A21]",
-      "type": "current"
+      "title": "GrapheneOS Alpha Available for Samsung Galaxy A21",
+      "date": "2025-03-30T16:30:04.318786",
+      "device": "Unknown",
+      "rom": "Unknown"
     },
     {
-      "title": "Extreme Kernel upstream v2",
-      "date": "2025-03-27",
-      "path": "current/Upstream-V2.html",
-      "device": "Exynos990",
-      "rom": "Upstream V2",
-      "type": "current"
-    },
-    {
+      "path": "current/Droidian-M21.html",
       "title": "Your Post Title",
-      "date": "2025-03-27",
+      "date": "2025-03-30T16:30:04.317618",
+      "device": "Unknown",
+      "rom": "Unknown"
+    },
+    {
+      "path": "current/test-post.html",
+      "title": "Unknown",
+      "date": "2025-03-30T16:30:04.317502",
+      "device": "Unknown",
+      "rom": "Unknown"
+    },
+    {
       "path": "current/Enda.html",
-      "device": "overall exynos 9830-2200",
-      "rom": "One UI7 beta 6",
-      "type": "current"
+      "title": "Your Post Title",
+      "date": "2025-03-30T16:30:04.316114",
+      "device": "Unknown",
+      "rom": "Unknown"
+    },
+    {
+      "path": "current/Upstream-V2.html",
+      "title": "Extreme Kernel upstream v2",
+      "date": "2025-03-30T16:30:04.314954",
+      "device": "Unknown",
+      "rom": "Unknown"
+    },
+    {
+      "path": "current/index.html",
+      "title": "Current Stuff",
+      "date": "2025-03-30T16:30:04.314229",
+      "device": "Unknown",
+      "rom": "Unknown"
+    },
+    {
+      "path": "archived/index.html",
+      "title": "Archived Stuff",
+      "date": "2025-03-30T16:30:04.313704",
+      "device": "Unknown",
+      "rom": "Unknown"
+    },
+    {
+      "path": "index.html",
+      "title": "News Hub",
+      "date": "2025-03-30T16:30:04.312641",
+      "device": "Unknown",
+      "rom": "Unknown"
     }
   ]
 }
